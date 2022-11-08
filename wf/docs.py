@@ -23,6 +23,18 @@ PARAMS = {
         description="FASTQ files",
         batch_table_column=True,
     ),
+    "quality_threshold": LatchParameter(
+        display_name="Minimum quality", description="Phred quality score"
+    ),
+    "adapter_fork": LatchParameter(),
+    "adapter_string": LatchParameter(display_name="Adapter sequence"),
+    "adapter_fasta": LatchParameter(
+        display_name="Adapter FASTA",
+        detail="(.fa, .fna, .fasta)",
+        rules=[
+            LatchRule(regex="(.fa|.fna|.fasta)$", message="Must be a valid FASTA file")
+        ],
+    ),
 }
 
 FLOW = [
@@ -37,6 +49,32 @@ FLOW = [
             "Choose read type",
             paired_end=ForkBranch("Paired-end", Params("paired_end")),
             single_end=ForkBranch("Single-end", Params("single_end")),
+        ),
+    ),
+    Section(
+        "Quality threshold",
+        Text(
+            "Select the quality value in which a base is qualified."
+            "Quality value refers to a Phred quality score"
+        ),
+        Params("quality_threshold"),
+    ),
+    Section(
+        "Adapter content",
+        Text(
+            "Trim adapter sequences provided below. Can either be a character sequence"
+            " specifying the adapter or a FASTA file containing the adapter sequences."
+            "Or, alternatively, you can let fastp automatically detect adapter sequences"
+        ),
+        Fork(
+            "adapter_fork",
+            "Use a character sequence or a FASTA file containing adapters",
+            adapter_all=ForkBranch(
+                "Detect adapters",
+                Text("Let fastp automatically detect adapter content"),
+            ),
+            adapter_fasta=ForkBranch("Adapter FASTA", Params("adapter_fasta")),
+            adapter_string=ForkBranch("Adapter sequence", Params("adapter_string")),
         ),
     ),
 ]
