@@ -1,118 +1,91 @@
-"""
-Assemble and sort some COVID reads...
-"""
-
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
-from latch import small_task, workflow
+from dataclasses_json import dataclass_json
+from latch import medium_task, workflow
 from latch.resources.launch_plan import LaunchPlan
-from latch.types import LatchAuthor, LatchFile, LatchMetadata, LatchParameter
+from latch.types import LatchDir, LatchFile
+
+from .docs import fastp_docs
 
 
-@small_task
-def assembly_task(read1: LatchFile, read2: LatchFile) -> LatchFile:
+@dataclass_json
+@dataclass
+class Sample:
+    name: str
+    read1: LatchFile
+    read2: LatchFile
 
-    # A reference to our output.
-    sam_file = Path("covid_assembly.sam").resolve()
 
-    _bowtie2_cmd = [
-        "bowtie2/bowtie2",
-        "--local",
-        "-x",
-        "wuhan",
-        "-1",
-        read1.local_path,
-        "-2",
-        read2.local_path,
-        "--very-sensitive-local",
-        "-S",
-        str(sam_file),
+@medium_task
+def run_fastp(sample: Sample) -> LatchDir:
+    """Adapter removal and read trimming with fastp"""
+
+    sample_name = sample.name
+    output_dir = Path("fastp_results").resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_prefix = f"{str(output_dir)}/{sample_name}"
+
+    _fastp_cmd = [
+        "/root/fastp",
+        "--in1",
+        sample.read1.local_path,
+        "--out1",
+        f"{output_prefix}_1.trim.fastq.gz",
+        "--json",
+        f"{output_prefix}.fastp.json",
+        "--html",
+        f"{output_prefix}.fastp.html",
+        "--thread",
+        "32",
     ]
 
-    subprocess.run(_bowtie2_cmd)
+    if sample.read2 is not None:
+        _fastp_cmd.extend(
+            [
+                "--in2",
+                sample.read2.local_path,
+                "--out2",
+                f"{output_prefix}_2.trim.fastq.gz",
+                "--detect_adapter_for_pe",
+            ]
+        )
 
-    return LatchFile(str(sam_file), "latch:///covid_assembly.sam")
+    subprocess.run(_fastp_cmd)
 
-
-@small_task
-def sort_bam_task(sam: LatchFile) -> LatchFile:
-
-    bam_file = Path("covid_sorted.bam").resolve()
-
-    _samtools_sort_cmd = [
-        "samtools",
-        "sort",
-        "-o",
-        str(bam_file),
-        "-O",
-        "bam",
-        sam.local_path,
-    ]
-
-    subprocess.run(_samtools_sort_cmd)
-
-    return LatchFile(str(bam_file), "latch:///covid_sorted.bam")
+    return LatchDir(str(output_dir), f"latch:///{output_prefix}")
 
 
-"""The metadata included here will be injected into your interface."""
-metadata = LatchMetadata(
-    display_name="Assemble and Sort FastQ Files",
-    documentation="your-docs.dev",
-    author=LatchAuthor(
-        name="John von Neumann",
-        email="hungarianpapi4@gmail.com",
-        github="github.com/fluid-dynamix",
-    ),
-    repository="https://github.com/your-repo",
-    license="MIT",
-    parameters={
-        "read1": LatchParameter(
-            display_name="Read 1",
-            description="Paired-end read 1 file to be assembled.",
-            batch_table_column=True,  # Show this parameter in batched mode.
-        ),
-        "read2": LatchParameter(
-            display_name="Read 2",
-            description="Paired-end read 2 file to be assembled.",
-            batch_table_column=True,  # Show this parameter in batched mode.
-        ),
-    },
-    tags=[],
-)
+@workflow(fastp_docs)
+def fastp(sample: Sample) -> LatchDir:
+    """An ultra-fast all-in-one FASTQ preprocessor
 
-
-@workflow(metadata)
-def assemble_and_sort(read1: LatchFile, read2: LatchFile) -> LatchFile:
-    """Description...
-
-    markdown header
+    fastp
     ----
 
-    Write some documentation about your workflow in
-    markdown here:
+    A tool designed to provide fast all-in-one preprocessing
+    for FastQ files. This tool is developed in C++ with multithreading
+    supported to afford high performance [^1].
 
-    > Regular markdown constructs work as expected.
-
-    # Heading
-
-    * content1
-    * content2
+    [^1]: Shifu Chen, Yanqing Zhou, Yaru Chen, Jia Gu; fastp: an
+    ultra-fast all-in-one FASTQ preprocessor, Bioinformatics, Volume 34,
+    Issue 17, 1 September 2018, Pages i884–i890,
+    https://doi.org/10.1093/bioinformatics/bty560
     """
-    sam = assembly_task(read1=read1, read2=read2)
-    return sort_bam_task(sam=sam)
+    return run_fastp(sample=sample)
 
 
-"""
-Add test data with a LaunchPlan. Provide default values in a dictionary with
-the parameter names as the keys. These default values will be available under
-the 'Test Data' dropdown at console.latch.bio.
-"""
 LaunchPlan(
-    assemble_and_sort,
+    fastp,
     "Test Data",
     {
-        "read1": LatchFile("s3://latch-public/init/r1.fastq"),
-        "read2": LatchFile("s3://latch-public/init/r2.fastq"),
+        "sample": Sample(
+            name="SRR579292",
+            read1=LatchFile("s3://latch-public/test-data/4318/SRR579292_1.fastq"),
+            read2=LatchFile("s3://latch-public/test-data/4318/SRR579292_2.fastq"),
+        )
     },
 )
