@@ -39,17 +39,17 @@ def run_fastp(
     sample = single_end if single_end is not None else paired_end
     read_type = "single" if sample == single_end else "paired"
 
-    out1_name = (
-        f"{output_prefix}.trim.fastq.gz"
-        if read_type == "single"
-        else f"{output_prefix}_1.trim.fastq.gz"
-    )
-
     sample_name = sample.name
     output_dir = Path("fastp_results").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_prefix = f"{str(output_dir)}/{sample_name}"
+
+    out1_name = (
+        f"{output_prefix}.trim.fastq.gz"
+        if read_type == "single"
+        else f"{output_prefix}_1.trim.fastq.gz"
+    )
 
     _fastp_cmd = [
         "/root/fastp",
