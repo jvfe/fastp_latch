@@ -95,7 +95,7 @@ def run_fastp(
 def fastp(
     sample_fork: str,
     paired_end: PairedEnd,
-    quality_threshold: int = 25,
+    quality_threshold: int = 30,
     adapter_fork: str = "none",
     adapter_fasta: Optional[LatchFile] = None,
     adapter_string: Optional[str] = None,
@@ -133,7 +133,7 @@ LaunchPlan(
             read1=LatchFile("s3://latch-public/test-data/4318/SRR579292_1.fastq"),
             read2=LatchFile("s3://latch-public/test-data/4318/SRR579292_2.fastq"),
         ),
-        "quality_threshold": 25,
+        "quality_threshold": 30,
         "adapter_fasta": LatchFile(
             "s3://latch-public/test-data/4318/sample_adapters.fa"
         ),
