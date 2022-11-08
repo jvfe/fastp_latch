@@ -12,8 +12,14 @@ from latch.types.metadata import (
 )
 
 PARAMS = {
-    "sample": LatchParameter(
-        display_name="Sample",
+    "sample_fork": LatchParameter(),
+    "paired_end": LatchParameter(
+        display_name="Paired-end reads",
+        description="FASTQ files",
+        batch_table_column=True,
+    ),
+    "single_end": LatchParameter(
+        display_name="Single-end reads",
         description="FASTQ files",
         batch_table_column=True,
     ),
@@ -26,7 +32,12 @@ FLOW = [
             "Sample provided has to include an identifier for the sample (Sample name)"
             " and one or two files corresponding to the reads (single-end or paired-end, respectively)"
         ),
-        Params("sample"),
+        Fork(
+            "sample_fork",
+            "Choose read type",
+            paired_end=ForkBranch("Paired-end", Params("paired_end")),
+            single_end=ForkBranch("Single-end", Params("single_end")),
+        ),
     ),
 ]
 

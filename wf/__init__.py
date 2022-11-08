@@ -13,16 +13,26 @@ from .docs import fastp_docs
 
 @dataclass_json
 @dataclass
-class Sample:
+class SingleEnd:
+    name: str
+    read1: LatchFile
+
+
+@dataclass_json
+@dataclass
+class PairedEnd:
     name: str
     read1: LatchFile
     read2: LatchFile
 
 
 @medium_task
-def run_fastp(sample: Sample) -> LatchDir:
+def run_fastp(
+    paired_end: PairedEnd, single_end: Optional[SingleEnd] = None
+) -> LatchDir:
     """Adapter removal and read trimming with fastp"""
 
+    sample = single_end if single_end is not None else paired_end
     sample_name = sample.name
     output_dir = Path("fastp_results").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -40,10 +50,10 @@ def run_fastp(sample: Sample) -> LatchDir:
         "--html",
         f"{output_prefix}.fastp.html",
         "--thread",
-        "32",
+        "16",
     ]
 
-    if sample.read2 is not None:
+    if type(sample) == PairedEnd:
         _fastp_cmd.extend(
             [
                 "--in2",
@@ -60,7 +70,9 @@ def run_fastp(sample: Sample) -> LatchDir:
 
 
 @workflow(fastp_docs)
-def fastp(sample: Sample) -> LatchDir:
+def fastp(
+    sample_fork: str, paired_end: PairedEnd, single_end: Optional[SingleEnd] = None
+) -> LatchDir:
     """An ultra-fast all-in-one FASTQ preprocessor
 
     fastp
@@ -75,14 +87,14 @@ def fastp(sample: Sample) -> LatchDir:
     Issue 17, 1 September 2018, Pages i884–i890,
     https://doi.org/10.1093/bioinformatics/bty560
     """
-    return run_fastp(sample=sample)
+    return run_fastp(paired_end=paired_end, single_end=single_end)
 
 
 LaunchPlan(
     fastp,
     "Test Data",
     {
-        "sample": Sample(
+        "paired_end": PairedEnd(
             name="SRR579292",
             read1=LatchFile("s3://latch-public/test-data/4318/SRR579292_1.fastq"),
             read2=LatchFile("s3://latch-public/test-data/4318/SRR579292_2.fastq"),
