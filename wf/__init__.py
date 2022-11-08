@@ -66,7 +66,7 @@ def run_fastp(
 
     subprocess.run(_fastp_cmd)
 
-    return LatchDir(str(output_dir), f"latch:///{output_prefix}")
+    return LatchDir(str(output_dir), f"latch:///fastp_results/{sample_name}")
 
 
 @workflow(fastp_docs)
