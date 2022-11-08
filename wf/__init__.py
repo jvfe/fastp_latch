@@ -64,7 +64,7 @@ def run_fastp(
         "--thread",
         "16",
         "--qualified_quality_phred",
-        quality_threshold,
+        str(quality_threshold),
     ]
 
     if read_type == "paired":
