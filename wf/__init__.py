@@ -1,10 +1,11 @@
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from dataclasses_json import dataclass_json
-from latch import medium_task, workflow
+from latch import medium_task, message, workflow
 from latch.resources.launch_plan import LaunchPlan
 from latch.types import LatchDir, LatchFile
 
@@ -26,6 +27,26 @@ class PairedEnd:
     read2: LatchFile
 
 
+def _capture_output(command: List[str]) -> Tuple[int, str]:
+    captured_stdout = []
+
+    with subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+        universal_newlines=True,
+    ) as process:
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line)
+            captured_stdout.append(line)
+        process.wait()
+        returncode = process.returncode
+
+    return returncode, "\n".join(captured_stdout)
+
+
 @medium_task
 def run_fastp(
     paired_end: PairedEnd,
@@ -38,6 +59,11 @@ def run_fastp(
 
     sample = single_end if single_end is not None else paired_end
     read_type = "single" if sample == single_end else "paired"
+
+    message(
+        "info",
+        {"title": "Set fastp mode", "info": f"Running fastp in {read_type}-end mode."},
+    )
 
     sample_name = sample.name
     output_dir = Path("fastp_results").resolve()
@@ -83,10 +109,43 @@ def run_fastp(
     elif adapter_string is not None:
         _fastp_cmd.extend(["--adapter_sequence", adapter_string])
     else:
+        message(
+            "warning",
+            {
+                "title": "Automatic adapter removal option chosen",
+                "body": (
+                    "Be aware that letting fastp automatically detect adapter"
+                    " sequences can lead to worse results"
+                ),
+            },
+        )
+
         if read_type == "paired":
             _fastp_cmd.append("--detect_adapter_for_pe")
 
-    subprocess.run(_fastp_cmd, check=True)
+    running_cmd = " ".join(_fastp_cmd)
+
+    message(
+        "info",
+        {
+            "title": f"Running fastp for input {sample_name}",
+            "body": f"Command: {running_cmd}",
+        },
+    )
+
+    return_code, stdout = _capture_output(_fastp_cmd)
+
+    if return_code != 0:
+        errors = re.findall("ERROR.*", stdout[1])
+
+        for error in errors:
+            message(
+                "error",
+                {
+                    "title": f"An error was raised while running fastp for {sample_name}",
+                    "body": error,
+                },
+            )
 
     return LatchDir(str(output_dir), f"latch:///fastp_results/{sample_name}")
 
