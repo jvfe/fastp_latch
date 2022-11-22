@@ -27,3 +27,4 @@ class FastpInput:
     quality_threshold: int
     adapter_fasta: Optional[LatchFile]
     adapter_string: Optional[str]
+    read_type: str

@@ -20,8 +20,12 @@ def organize_fastp_inputs(
     adapter_string: Optional[str],
 ) -> List[FastpInput]:
 
-    samples = single_end if single_end is not None else paired_end
-    read_type = "single" if samples[0] == single_end[0] else "paired"
+    if single_end is not None:
+        samples = single_end
+        read_type = "single"
+    else:
+        samples = paired_end
+        read_type = "paired"
 
     return [
         FastpInput(
