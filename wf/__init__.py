@@ -1,35 +1,55 @@
 import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from latch import medium_task, message, workflow
+from latch import map_task, medium_task, message, small_task, workflow
 from latch.resources.launch_plan import LaunchPlan
 from latch.types import LatchDir, LatchFile
 
 from .docs import fastp_docs
-from .types import PairedEnd, SingleEnd
+from .types import FastpInput, PairedEnd, SingleEnd
 from .utils import _capture_output
+
+
+@small_task
+def organize_fastp_inputs(
+    paired_end: List[PairedEnd],
+    quality_threshold: int,
+    single_end: Optional[List[SingleEnd]],
+    adapter_fasta: Optional[LatchFile],
+    adapter_string: Optional[str],
+) -> List[FastpInput]:
+
+    samples = single_end if single_end is not None else paired_end
+    read_type = "single" if samples[0] == single_end[0] else "paired"
+
+    return [
+        FastpInput(
+            sample=sample,
+            read_type=read_type,
+            adapter_fasta=adapter_fasta,
+            adapter_string=adapter_string,
+            quality_threshold=quality_threshold,
+        )
+        for sample in samples
+    ]
 
 
 @medium_task
 def run_fastp(
-    paired_end: PairedEnd,
-    quality_threshold: int,
-    single_end: Optional[SingleEnd],
-    adapter_fasta: Optional[LatchFile],
-    adapter_string: Optional[str],
+    fastp_input: FastpInput,
 ) -> LatchDir:
     """Adapter removal and read trimming with fastp"""
 
-    sample = single_end if single_end is not None else paired_end
-    read_type = "single" if sample == single_end else "paired"
-
     message(
         "info",
-        {"title": "Set fastp mode", "info": f"Running fastp in {read_type}-end mode."},
+        {
+            "title": "Set fastp mode",
+            "info": f"Running fastp in {fastp_input.read_type}-end mode.",
+        },
     )
 
-    sample_name = sample.name
+    sample_name = fastp_input.sample.name
     output_dir = Path("fastp_results").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -37,14 +57,14 @@ def run_fastp(
 
     out1_name = (
         f"{output_prefix}.trim.fastq.gz"
-        if read_type == "single"
+        if fastp_input.read_type == "single"
         else f"{output_prefix}_1.trim.fastq.gz"
     )
 
     _fastp_cmd = [
         "/root/fastp",
         "--in1",
-        sample.read1.local_path,
+        fastp_input.sample.read1.local_path,
         "--out1",
         out1_name,
         "--json",
@@ -54,24 +74,24 @@ def run_fastp(
         "--thread",
         "16",
         "--qualified_quality_phred",
-        str(quality_threshold),
+        str(fastp_input.quality_threshold),
     ]
 
-    if read_type == "paired":
+    if fastp_input.read_type == "paired":
         _fastp_cmd.extend(
             [
                 "--in2",
-                sample.read2.local_path,
+                fastp_input.sample.read2.local_path,
                 "--out2",
                 f"{output_prefix}_2.trim.fastq.gz",
             ]
         )
 
     # Handle adapter content
-    if adapter_fasta is not None:
-        _fastp_cmd.extend(["--adapter_fasta", adapter_fasta.local_path])
-    elif adapter_string is not None:
-        _fastp_cmd.extend(["--adapter_sequence", adapter_string])
+    if fastp_input.adapter_fasta is not None:
+        _fastp_cmd.extend(["--adapter_fasta", fastp_input.adapter_fasta.local_path])
+    elif fastp_input.adapter_string is not None:
+        _fastp_cmd.extend(["--adapter_sequence", fastp_input.adapter_string])
     else:
         message(
             "warning",
@@ -84,7 +104,7 @@ def run_fastp(
             },
         )
 
-        if read_type == "paired":
+        if fastp_input.read_type == "paired":
             _fastp_cmd.append("--detect_adapter_for_pe")
 
     running_cmd = " ".join(_fastp_cmd)
@@ -117,13 +137,13 @@ def run_fastp(
 @workflow(fastp_docs)
 def fastp(
     sample_fork: str,
-    paired_end: PairedEnd,
+    paired_end: List[PairedEnd],
     quality_threshold: int = 30,
     adapter_fork: str = "none",
     adapter_fasta: Optional[LatchFile] = None,
     adapter_string: Optional[str] = None,
-    single_end: Optional[SingleEnd] = None,
-) -> LatchDir:
+    single_end: Optional[List[SingleEnd]] = None,
+) -> List[LatchDir]:
     """An ultra-fast all-in-one FASTQ preprocessor
 
     fastp
@@ -138,24 +158,33 @@ def fastp(
     Issue 17, 1 September 2018, Pages i884–i890,
     https://doi.org/10.1093/bioinformatics/bty560
     """
-    return run_fastp(
+    fastp_inputs = organize_fastp_inputs(
         paired_end=paired_end,
-        single_end=single_end,
         quality_threshold=quality_threshold,
+        single_end=single_end,
         adapter_fasta=adapter_fasta,
         adapter_string=adapter_string,
     )
+
+    return map_task(run_fastp)(fastp_input=fastp_inputs)
 
 
 LaunchPlan(
     fastp,
     "Test Data",
     {
-        "paired_end": PairedEnd(
-            name="SRR579292",
-            read1=LatchFile("s3://latch-public/test-data/4318/SRR579292_1.fastq"),
-            read2=LatchFile("s3://latch-public/test-data/4318/SRR579292_2.fastq"),
-        ),
+        "paired_end": [
+            PairedEnd(
+                name="SRR579291",
+                read1=LatchFile("s3://latch-public/test-data/4318/SRR579291_1.fastq"),
+                read2=LatchFile("s3://latch-public/test-data/4318/SRR579291_2.fastq"),
+            ),
+            PairedEnd(
+                name="SRR579292",
+                read1=LatchFile("s3://latch-public/test-data/4318/SRR579292_1.fastq"),
+                read2=LatchFile("s3://latch-public/test-data/4318/SRR579292_2.fastq"),
+            ),
+        ],
         "quality_threshold": 30,
         "adapter_fasta": LatchFile(
             "s3://latch-public/test-data/4318/sample_adapters.fa"
