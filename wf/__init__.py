@@ -1,13 +1,13 @@
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from latch import map_task, medium_task, message, small_task, workflow
 from latch.resources.launch_plan import LaunchPlan
 from latch.types import LatchDir, LatchFile
 
 from .docs import fastp_docs
-from .types import FastpInput, PairedEnd, SingleEnd
+from .types import FastpInput, FastpInputFASTA, FastpInputString, PairedEnd, SingleEnd
 from .utils import _capture_output
 
 
@@ -18,7 +18,7 @@ def organize_fastp_inputs(
     single_end: Optional[List[SingleEnd]],
     adapter_fasta: Optional[LatchFile],
     adapter_string: Optional[str],
-) -> List[FastpInput]:
+) -> List[Union[FastpInputFASTA, FastpInputString, FastpInput]]:
 
     if single_end is not None:
         samples = single_end
@@ -27,21 +27,39 @@ def organize_fastp_inputs(
         samples = paired_end
         read_type = "paired"
 
-    return [
-        FastpInput(
-            sample=sample,
-            read_type=read_type,
-            adapter_fasta=adapter_fasta,
-            adapter_string=adapter_string,
-            quality_threshold=quality_threshold,
-        )
-        for sample in samples
-    ]
+    inputs = []
+    for sample in samples:
+
+        # TODO: Improve this
+        if adapter_fasta is not None:
+            cur_sample = FastpInputFASTA(
+                sample=sample,
+                read_type=read_type,
+                adapter_fasta=adapter_fasta,
+                quality_threshold=quality_threshold,
+            )
+        elif adapter_string is not None:
+            cur_sample = FastpInputString(
+                sample=sample,
+                read_type=read_type,
+                adapter_string=adapter_string,
+                quality_threshold=quality_threshold,
+            )
+        else:
+            cur_sample = FastpInput(
+                sample=sample,
+                read_type=read_type,
+                quality_threshold=quality_threshold,
+            )
+
+        inputs.append(cur_sample)
+
+    return inputs
 
 
 @medium_task
 def run_fastp(
-    fastp_input: FastpInput,
+    fastp_input: Union[FastpInputFASTA, FastpInputString, FastpInput],
 ) -> LatchDir:
     """Adapter removal and read trimming with fastp"""
 
@@ -92,9 +110,9 @@ def run_fastp(
         )
 
     # Handle adapter content
-    if fastp_input.adapter_fasta is not None:
+    if hasattr(fastp_input, "adapter_fasta"):
         _fastp_cmd.extend(["--adapter_fasta", fastp_input.adapter_fasta.local_path])
-    elif fastp_input.adapter_string is not None:
+    elif hasattr(fastp_input, "adapter_string"):
         _fastp_cmd.extend(["--adapter_sequence", fastp_input.adapter_string])
     else:
         message(

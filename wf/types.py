@@ -23,8 +23,18 @@ class PairedEnd:
 @dataclass_json
 @dataclass
 class FastpInput:
-    sample: Union[PairedEnd, SingleEnd]
+    sample: Union[SingleEnd, PairedEnd]
     quality_threshold: int
-    adapter_fasta: Optional[LatchFile]
-    adapter_string: Optional[str]
     read_type: str
+
+
+@dataclass_json
+@dataclass
+class FastpInputFASTA(FastpInput):
+    adapter_fasta: LatchFile
+
+
+@dataclass_json
+@dataclass
+class FastpInputString(FastpInput):
+    adapter_string: str
