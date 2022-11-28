@@ -1,4 +1,5 @@
 import re
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -18,6 +19,7 @@ def organize_fastp_inputs(
     single_end: Optional[List[SingleEnd]],
     adapter_fasta: Optional[LatchFile],
     adapter_string: Optional[str],
+    output_directory: str,
 ) -> List[Union[FastpInputFASTA, FastpInputString, FastpInput]]:
 
     if single_end is not None:
@@ -37,6 +39,7 @@ def organize_fastp_inputs(
                 read_type=read_type,
                 adapter_fasta=adapter_fasta,
                 quality_threshold=quality_threshold,
+                output_directory=output_directory,
             )
         elif adapter_string is not None:
             cur_sample = FastpInputString(
@@ -44,12 +47,14 @@ def organize_fastp_inputs(
                 read_type=read_type,
                 adapter_string=adapter_string,
                 quality_threshold=quality_threshold,
+                output_directory=output_directory,
             )
         else:
             cur_sample = FastpInput(
                 sample=sample,
                 read_type=read_type,
                 quality_threshold=quality_threshold,
+                output_directory=output_directory,
             )
 
         inputs.append(cur_sample)
@@ -153,7 +158,29 @@ def run_fastp(
                 },
             )
 
-    return LatchDir(str(output_dir), f"latch:///fastp_results/{sample_name}")
+    return LatchDir(
+        str(output_dir), f"latch:///{fastp_input.output_directory}/{sample_name}"
+    )
+
+
+@small_task
+def run_multiqc(fastp_results: List[LatchDir], output_directory: str) -> LatchDir:
+
+    output_dirname = "multiqc_results"
+    output_dir = Path(output_dirname).resolve()
+
+    _multiqc_cmd = [
+        "multiqc",
+        "-p",
+        "-o",
+        str(output_dir),
+    ]
+
+    _multiqc_cmd.extend([d.local_path for d in fastp_results])
+
+    subprocess.run(_multiqc_cmd, check=True)
+
+    return LatchDir(str(output_dir), f"latch:///{output_directory}/{output_dirname}")
 
 
 @workflow(fastp_docs)
@@ -165,7 +192,8 @@ def fastp(
     adapter_fasta: Optional[LatchFile] = None,
     adapter_string: Optional[str] = None,
     single_end: Optional[List[SingleEnd]] = None,
-) -> List[LatchDir]:
+    output_directory: str = "fastp_results",
+) -> LatchDir:
     """An ultra-fast all-in-one FASTQ preprocessor
 
     fastp
@@ -186,9 +214,14 @@ def fastp(
         single_end=single_end,
         adapter_fasta=adapter_fasta,
         adapter_string=adapter_string,
+        output_directory=output_directory,
     )
 
-    return map_task(run_fastp)(fastp_input=fastp_inputs)
+    fastp_res = map_task(run_fastp)(fastp_input=fastp_inputs)
+
+    multiqc = run_multiqc(fastp_results=fastp_res, output_directory=output_directory)
+
+    return multiqc
 
 
 LaunchPlan(

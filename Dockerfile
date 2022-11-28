@@ -7,6 +7,9 @@ RUN apt-get install -y curl
 RUN curl -L http://opengene.org/fastp/fastp -o fastp &&\
     chmod a+x fastp
 
+# Install multiqc
+RUN python3 -m pip install multiqc
+
 # STOP HERE:
 # The following lines are needed to ensure your build environement works
 # correctly with latch.

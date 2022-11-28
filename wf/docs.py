@@ -35,6 +35,9 @@ PARAMS = {
             LatchRule(regex="(.fa|.fna|.fasta)$", message="Must be a valid FASTA file")
         ],
     ),
+    "output_directory": LatchParameter(
+        display_name="Output directory",
+    ),
 }
 
 FLOW = [
@@ -50,6 +53,8 @@ FLOW = [
             paired_end=ForkBranch("Paired-end", Params("paired_end")),
             single_end=ForkBranch("Single-end", Params("single_end")),
         ),
+        Text("Name of the output directory to send results to."),
+        Params("output_directory"),
     ),
     Section(
         "Quality threshold",

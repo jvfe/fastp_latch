@@ -26,6 +26,7 @@ class FastpInput:
     sample: Union[SingleEnd, PairedEnd]
     quality_threshold: int
     read_type: str
+    output_directory: str
 
 
 @dataclass_json
