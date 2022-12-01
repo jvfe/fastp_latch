@@ -176,6 +176,7 @@ cython_debug/
 #.idea/
 
 .latch_report.tar.gz
+.latch_history
 .logs/
 cache.txt
 .ssh_key
